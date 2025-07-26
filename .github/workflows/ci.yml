@@ -1,52 +1,60 @@
-name: MLOps Pipeline CI/CD
+name: MLOps CI/CD Pipeline
 
 on:
   push:
     branches: [ docker_ci ]
-  pull_request:
-    branches: [ docker_ci ]
+
+env:
+  DOCKER_IMAGE_NAME: mlops-pipeline
+  DOCKERHUB_USERNAME: akash171 # Your Docker Hub username
 
 jobs:
   build_and_test_container:
     runs-on: ubuntu-latest
-
+    
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
-
-    - name: Set up Python 3.9
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: 3.9
-
+        python-version: '3.9'
+    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+    
     - name: Run training script
-      run: |
-        python src/train.py
+      run: python train.py # train.py is expected to be in the repository root
+    
     - name: Verify model files exist
       run: |
-        ls -la models/
-        test -f models/linear_model.joblib
-        test -f models/test_data.joblib
+        ls -la models/ # List contents of models/ to debug if needed
+        test -f models/linear_regression_model.joblib # Check if model file exists
+        test -f models/test_data.joblib # Check if test data file exists
+    
     - name: Build Docker image
       run: |
-        docker build -t housing-predictor:latest .
-    - name: Test Docker container
+        docker build -t ${{ env.DOCKER_IMAGE_NAME }}:latest . # Build image from Dockerfile in root
+    
+    - name: Run Docker container verification
       run: |
-        docker run --rm housing-predictor:latest python src/predict.py
-    - name: Login to Docker Hub
-      if: success()
-      uses: docker/login-action@v2
+        # Run the Docker container and execute predict.py inside it for verification
+        docker run --rm ${{ env.DOCKER_IMAGE_NAME }}:latest python src/predict.py
+    
+    - name: Log in to Docker Hub
+      if: success() # Only attempt login if previous steps succeeded
+      uses: docker/login-action@v3
       with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_TOKEN }}
-
-    - name: Push to Docker Hub
-      if: success()
+        username: ${{ secrets.DOCKER_USERNAME }} # GitHub Secret for Docker Hub username
+        password: ${{ secrets.DOCKER_TOKEN }}    # GitHub Secret for Docker Hub Personal Access Token
+    
+    - name: Push Docker image to Docker Hub
+      if: success() # Only attempt push if login succeeded
       run: |
-        docker tag housing-predictor:latest ${{ secrets.DOCKER_USERNAME }}/housing-predictor:latest
-        docker push ${{ secrets.DOCKER_USERNAME }}/housing-predictor:latest
-        echo "Docker image pushed successfully!"
+        # Tag the image with Docker Hub username and repository name
+        docker tag ${{ env.DOCKER_IMAGE_NAME }}:latest ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+        # Push the tagged image to Docker Hub
+        docker push ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKER_IMAGE_NAME }}:latest
